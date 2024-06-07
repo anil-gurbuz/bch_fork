@@ -19,6 +19,7 @@ import contextlib
 import faulthandler
 import io
 import multiprocessing
+from multiprocessing.context import assert_spawning
 import os
 import platform
 import signal
@@ -36,7 +37,9 @@ def check_correctness(check_program, timeout, task_id, completion_id):
     manager = multiprocessing.Manager()
     result = manager.list()
 
-    p = multiprocessing.Process(target=unsafe_execute, args=(check_program, result, timeout))
+    p = multiprocessing.Process(
+        target=unsafe_execute, args=(check_program, result, timeout)
+    )
     p.start()
     p.join(timeout=timeout + 1)
     if p.is_alive():
@@ -44,6 +47,15 @@ def check_correctness(check_program, timeout, task_id, completion_id):
 
     if not result:
         result.append("timed out")
+
+    if result[0] != "passed":
+
+        print("=" * 50)
+        print(f"task id: {task_id}")
+        print("=" * 50)
+        print(check_program)
+        print("-" * 50)
+        print(result)
 
     return dict(
         task_id=task_id,
@@ -77,6 +89,8 @@ def unsafe_execute(check_program, result, timeout):
             result.append("passed")
         except TimeoutException:
             result.append("timed out")
+        except AssertionError as e:
+            result.append(f"Assertion Error: {e}")
         except BaseException as e:
             result.append(f"failed: {e}")
 
@@ -171,10 +185,16 @@ def reliability_guard(maximum_memory_bytes=None):
     if maximum_memory_bytes is not None:
         import resource
 
-        resource.setrlimit(resource.RLIMIT_AS, (maximum_memory_bytes, maximum_memory_bytes))
-        resource.setrlimit(resource.RLIMIT_DATA, (maximum_memory_bytes, maximum_memory_bytes))
+        resource.setrlimit(
+            resource.RLIMIT_AS, (maximum_memory_bytes, maximum_memory_bytes)
+        )
+        resource.setrlimit(
+            resource.RLIMIT_DATA, (maximum_memory_bytes, maximum_memory_bytes)
+        )
         if not platform.uname().system == "Darwin":
-            resource.setrlimit(resource.RLIMIT_STACK, (maximum_memory_bytes, maximum_memory_bytes))
+            resource.setrlimit(
+                resource.RLIMIT_STACK, (maximum_memory_bytes, maximum_memory_bytes)
+            )
 
     faulthandler.disable()
 
